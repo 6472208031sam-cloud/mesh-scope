@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Mesh Scope — GTA</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  html,body{margin:0;height:100%;font-family:-apple-system,system-ui,sans-serif;background:#0d1117;color:#e6edf3}
+  #map{position:absolute;top:0;bottom:0;left:0;right:0}
+  #hud{position:absolute;top:10px;left:10px;right:10px;z-index:1000;pointer-events:none}
+  .card{pointer-events:auto;background:rgba(13,17,23,.92);border:1px solid #30363d;border-radius:12px;
+        padding:10px 14px;max-width:420px;box-shadow:0 4px 18px rgba(0,0,0,.5)}
+  .card h1{font-size:16px;margin:0 0 2px}
+  .card h1 .ver{font-size:11px;color:#8b949e;font-weight:normal;margin-left:6px}
+  .card p{font-size:12px;color:#8b949e;margin:4px 0}
+  .card p b{color:#e6edf3}
+  #me{pointer-events:auto;margin-top:8px;background:#1f6feb;border:0;color:#fff;border-radius:8px;
+      padding:8px 14px;font-size:13px;cursor:pointer}
+  #me:active{background:#388bfd}
+  .leaflet-popup-content{font-size:13px;line-height:1.5;color:#111}
+  .leaflet-popup-content b{font-size:14px}
+  .stale{color:#8b949e;font-size:11px}
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div id="hud">
+  <div class="card">
+    <h1>📡 Mesh Scope — GTA <span class="ver">v1.0</span></h1>
+    <p><b id="count">…</b> Meshtastic nodes reporting in the area</p>
+    <p>Data refreshed <b id="ago">…</b> · auto-updates every 30 min</p>
+    <p class="stale">Only nodes with map reporting enabled appear — the real mesh is bigger than this.</p>
+    <button id="me">📍 Find me</button>
+  </div>
+</div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const map = L.map('map').setView([43.65, -79.38], 10);
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+  {maxZoom: 18, attribution: '© OpenStreetMap · nodes: meshtastic.liamcottle.net'}).addTo(map);
+
+function ago(iso){
+  if(!iso) return 'unknown';
+  const s = Math.max(0, (Date.now() - new Date(iso).getTime())/1000);
+  if(s < 90) return Math.round(s) + 's ago';
+  if(s < 5400) return Math.round(s/60) + 'm ago';
+  if(s < 172800) return Math.round(s/3600) + 'h ago';
+  return Math.round(s/86400) + 'd ago';
+}
+
+fetch('nodes.json', {cache: 'no-store'})
+  .then(r => r.json())
+  .then(d => {
+    document.getElementById('count').textContent = d.gta_count;
+    document.getElementById('ago').textContent = ago(d.updated_at);
+    d.nodes.forEach(n => {
+      const fresh = n.updated && (Date.now() - new Date(n.updated).getTime()) < 6*3600*1000;
+      const m = L.circleMarker([n.lat, n.lng], {
+        radius: 7,
+        color: fresh ? '#3fb950' : '#8b949e',
+        fillColor: fresh ? '#3fb950' : '#8b949e',
+        fillOpacity: .85, weight: 1
+      }).addTo(map);
+      m.bindPopup('<b>' + escapeHtml(n.name) + '</b><br>' +
+        n.lat.toFixed(4) + ', ' + n.lng.toFixed(4) + '<br>' +
+        '<span class="stale">heard ' + ago(n.updated) + '</span>');
+    });
+  })
+  .catch(() => { document.getElementById('count').textContent = 'could not load'; });
+
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+document.getElementById('me').onclick = () => {
+  if(!navigator.geolocation) return alert('Geolocation not available');
+  navigator.geolocation.getCurrentPosition(p => {
+    map.setView([p.coords.latitude, p.coords.longitude], 12);
+    L.circleMarker([p.coords.latitude, p.coords.longitude],
+      {radius: 8, color: '#58a6ff', fillColor: '#58a6ff', fillOpacity: .9}).addTo(map)
+      .bindPopup('<b>You are here</b>').openPopup();
+  }, () => alert('Could not get your location'));
+};
+</script>
+</body>
+</html>
